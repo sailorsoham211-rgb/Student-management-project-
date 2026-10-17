@@ -1,0 +1,136 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>Student Risk Prediction Dashboard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>
+:root{--bg:#f3f6f4;--card:#fff;--tx:#1f2937;--mut:#6b7280;--ac:#0e7c7b;--gd:#f2a541;--rd:#d1495b;--bd:#d8dfdc;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1b1b;--card:#172626;--tx:#e8efed;--mut:#9fb0ad;--bd:#2a3d3c}}
+:root[data-theme="dark"]{--bg:#0f1b1b;--card:#172626;--tx:#e8efed;--mut:#9fb0ad;--bd:#2a3d3c}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font-family:Calibri,'Segoe UI',Arial,sans-serif;padding:14px}
+h1{font-family:Georgia,serif;font-size:22px;margin:0}.sub{color:var(--mut);font-size:13px;margin:2px 0 12px}
+nav{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+button,select,input{font:inherit;color:var(--tx);background:var(--card);border:1px solid var(--bd);border-radius:6px;padding:7px 10px}
+button{cursor:pointer}button.on,button.pr{background:var(--ac);color:#fff;border-color:var(--ac)}
+.grid{display:grid;gap:12px}.k{grid-template-columns:repeat(auto-fit,minmax(140px,1fr));margin-bottom:12px}.c{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:14px;min-width:0}.card h2{font-size:15px;margin:0 0 8px}
+.kv{font-size:27px;font-weight:700}.kl{font-size:12px;color:var(--mut)}.cv{position:relative;height:250px}
+.tw{overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--bd);white-space:nowrap}
+.p{padding:2px 8px;border-radius:10px;color:#fff;font-size:12px}.sec{display:none}.sec.on{display:block}
+.f{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}.f label{font-size:12px;color:var(--mut);display:flex;flex-direction:column;gap:3px}
+.bar{height:14px;background:var(--bd);border-radius:7px;overflow:hidden}.bar i{display:block;height:100%}
+.big{font-size:34px;font-weight:700}.mut{color:var(--mut);font-size:13px}ul{margin:6px 0;padding-left:18px;font-size:13px}.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+.cm td{text-align:center;font-weight:700;font-size:16px}
+</style></head><body>
+<h1>Student Risk Prediction Dashboard</h1><div class="sub">Random Forest classifier (built in-browser) | predicts at-risk students from scores, attendance and study habits</div>
+<nav id="nav"></nav>
+
+<div class="sec on" id="s0"><div class="grid k" id="kp"></div><div class="grid c">
+<div class="card"><h2>Risk level distribution</h2><div class="cv"><canvas id="c1"></canvas></div></div>
+<div class="card"><h2>Attendance vs internal marks</h2><div class="cv"><canvas id="c2"></canvas></div></div>
+<div class="card"><h2>Average by risk level</h2><div class="cv"><canvas id="c3"></canvas></div></div></div></div>
+
+<div class="sec" id="s1"><div class="grid c">
+<div class="card"><h2>Student details (live prediction)</h2><div class="f" id="form"></div>
+<div class="row" style="margin-top:12px"><button class="pr" id="save">Save student</button><button id="reset">Reset</button><span class="mut" id="msg"></span></div></div>
+<div class="card"><h2>Prediction</h2><div class="big" id="pp">-</div><div class="bar"><i id="pb"></i></div><div class="mut" id="pl" style="margin:6px 0"></div>
+<b style="font-size:13px">Weak areas</b><ul id="wk"></ul><b style="font-size:13px">Recommended actions</b><ul id="rc"></ul></div></div></div>
+
+<div class="sec" id="s2"><div class="grid c">
+<div class="card"><h2>Train the Random Forest</h2><div class="f"><label>Trees: <span id="tv">40</span><input type="range" id="nt" min="5" max="100" value="40"></label>
+<label>Max depth: <span id="dv">5</span><input type="range" id="md" min="2" max="10" value="5"></label><label>Test split: <span id="sv">20</span>%<input type="range" id="ts" min="10" max="40" value="20"></label></div>
+<div class="row" style="margin-top:12px"><button class="pr" id="train">Retrain model</button></div>
+<div class="grid k" id="mt" style="margin:0"></div>
+<h2 style="margin-top:12px">Confusion matrix (test set)</h2><table class="cm" id="cm"></table>
+<p class="mut">Workflow: split data into train/test, bootstrap each tree, pick random feature subsets, vote across trees. Precision = flagged students truly at risk; recall = at-risk students we caught.</p></div>
+<div class="card"><h2>Feature importance</h2><div class="cv"><canvas id="c4"></canvas></div></div></div></div>
+
+<div class="sec" id="s3"><div class="card"><div class="row"><input id="q" placeholder="Search name or ID"><select id="fr"><option value="">All risk</option><option>High</option><option>Medium</option><option>Low</option></select>
+<button id="ex">Export CSV</button><label class="mut">Import CSV <input type="file" id="im" accept=".csv"></label></div><div class="tw"><table id="tb"></table></div></div></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+let seed=11;const rnd=()=>(seed=(seed*16807)%2147483647)/2147483647;
+const FT=[['att','Attendance %',0,100,75],['internal','Internal marks %',0,100,60],['mid','Mid-sem marks %',0,100,55],['assign','Assignment score %',0,100,70],['cgpa','Previous CGPA',0,10,6.5],['study','Study hours / week',0,40,10],['back','Backlogs',0,10,0]];
+const KEYS=FT.map(f=>f[0]),BR=['Computer','IT','Mechanical','Civil','Electrical'];
+const TIP={att:'Attend all classes; target 75%+ attendance.',internal:'Meet the faculty and revise weak internal topics.',mid:'Practise past mid-sem papers.',assign:'Submit assignments on time.',cgpa:'Revisit fundamentals from earlier semesters.',study:'Plan at least 10 study hours per week.',back:'Clear backlogs with a remedial schedule.'};
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+function label(d){const s=.28*d.att+.22*d.internal+.18*d.mid+.12*d.assign+.1*d.cgpa*10+.1*Math.min(d.study,20)*5-6*d.back+(rnd()-.5)*12;return s<60?1:0}
+const NM=['Aarav','Diya','Kabir','Isha','Rohan','Meera','Vivaan','Anaya','Arjun','Riya','Dev','Naina'],LN=['Patel','Shah','Mehta','Desai','Joshi','Trivedi','Parmar','Modi'];
+let D=[];for(let i=1;i<=300;i++){const a=clamp(Math.round(50+rnd()*50),0,100),g=(rnd()-.5)*30;
+const d={id:'S'+String(i).padStart(3,'0'),name:NM[Math.floor(rnd()*12)]+' '+LN[Math.floor(rnd()*8)],branch:BR[Math.floor(rnd()*5)],sem:[3,5,7][Math.floor(rnd()*3)],att:a,
+internal:clamp(Math.round(a*.5+25+g),10,100),mid:clamp(Math.round(a*.5+20+g+(rnd()-.5)*10),10,100),assign:clamp(Math.round(a*.4+40+(rnd()-.5)*30),20,100),
+cgpa:+clamp(a/14+2+(rnd()-.5)*2,3,10).toFixed(1),study:Math.round(rnd()*20),back:rnd()<.2?Math.ceil(rnd()*3):0};d.y=label(d);D.push(d)}
+try{const a=JSON.parse(localStorage.getItem('sms_added')||'[]');a.forEach(x=>D.push(x))}catch(e){}
+
+// ---- Random Forest ----
+const gi=(p,n)=>n?1-(p/n)**2-((n-p)/n)**2:0;
+function tree(X,y,idx,dep,P,imp){const n=idx.length,pos=idx.reduce((s,i)=>s+y[i],0);
+if(dep>=P.depth||n<5||pos==0||pos==n)return{p:pos/n};
+const m=Math.max(2,Math.round(Math.sqrt(KEYS.length))),fs=[...KEYS.keys()].sort(()=>rnd()-.5).slice(0,m);let best=null,pg=gi(pos,n)*n;
+for(const f of fs){const v=idx.map(i=>X[i][f]).sort((a,b)=>a-b);for(let q=1;q<8;q++){const t=v[Math.floor(q*n/8)];let nl=0,pl=0;
+for(const i of idx)if(X[i][f]<=t){nl++;pl+=y[i]}if(!nl||nl==n)continue;const g=pg-gi(pl,nl)*nl-gi(pos-pl,n-nl)*(n-nl);if(!best||g>best.g)best={g,f,t}}}
+if(!best||best.g<=0)return{p:pos/n};imp[best.f]+=best.g;
+return{f:best.f,t:best.t,l:tree(X,y,idx.filter(i=>X[i][best.f]<=best.t),dep+1,P,imp),r:tree(X,y,idx.filter(i=>X[i][best.f]>best.t),dep+1,P,imp)}}
+const tp=(t,x)=>{while(t.f!==undefined)t=x[t.f]<=t.t?t.l:t.r;return t.p};
+let M=null;
+function train(){const P={n:+$('nt').value,depth:+$('md').value,ts:+$('ts').value/100};
+const rows=D.map(d=>({x:KEYS.map(k=>d[k]),y:d.y})).sort(()=>rnd()-.5),cut=Math.floor(rows.length*(1-P.ts)),tr=rows.slice(0,cut),te=rows.slice(cut);
+const X=tr.map(r=>r.x),y=tr.map(r=>r.y),imp=KEYS.map(()=>0),ts=[];
+for(let i=0;i<P.n;i++){const idx=tr.map(()=>Math.floor(rnd()*tr.length));ts.push(tree(X,y,idx,0,P,imp))}
+const s=imp.reduce((a,b)=>a+b,0)||1;M={ts,imp:imp.map(v=>v/s),P};
+let tpn=0,fp=0,fn=0,tn=0;te.forEach(r=>{const p=pred(r.x)>=.5?1:0;if(p&&r.y)tpn++;else if(p)fp++;else if(r.y)fn++;else tn++});
+const pr=tpn/(tpn+fp||1),rc=tpn/(tpn+fn||1);M.m={acc:(tpn+tn)/te.length,pr,rc,f1:2*pr*rc/(pr+rc||1),tp:tpn,fp,fn,tn,n:te.length};
+D.forEach(d=>{d.p=pred(KEYS.map(k=>d[k]))})}
+const pred=x=>M.ts.reduce((s,t)=>s+tp(t,x),0)/M.ts.length;
+const lvl=p=>p>=.6?'High':p>=.3?'Medium':'Low';
+const css=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const COL=()=>({High:css('--rd'),Medium:css('--gd'),Low:css('--ac')});
+const stat=k=>{const v=D.map(d=>d[k]),m=v.reduce((a,b)=>a+b,0)/v.length;return{m,s:Math.sqrt(v.reduce((a,b)=>a+(b-m)**2,0)/v.length)||1}};
+function weak(o){const r=KEYS.map((k,i)=>{const{m,s}=stat(k);let z=(o[k]-m)/s;if(k=='back')z=-z;return{k,c:M.imp[i]*z}}).sort((a,b)=>a.c-b.c);return r.filter(x=>x.c<0).slice(0,3)}
+// ---- UI ----
+const TABS=['Overview','Add / Predict','Model','Students'];let cur=0;
+$('nav').innerHTML=TABS.map((t,i)=>`<button data-i="${i}">${t}</button>`).join('');
+$('nav').onclick=e=>{if(e.target.dataset.i!==undefined){cur=+e.target.dataset.i;show()}};
+function show(){[...$('nav').children].forEach((b,i)=>b.classList.toggle('on',i==cur));TABS.forEach((_,i)=>$('s'+i).classList.toggle('on',i==cur));[ov,pv,mod,tab][cur]()}
+let ch={};const mk=(id,c)=>{if(ch[id])ch[id].destroy();ch[id]=new Chart($(id),c)};
+function ov(){Chart.defaults.color=css('--tx');Chart.defaults.borderColor=css('--bd');const C=COL(),n=D.length;
+const hi=D.filter(d=>lvl(d.p)=='High').length,av=D.reduce((s,d)=>s+d.att,0)/n;
+$('kp').innerHTML=[['Students',n],['High risk',hi],['Avg attendance',av.toFixed(1)+'%'],['Model accuracy',(M.m.acc*100).toFixed(1)+'%']].map(k=>`<div class="card"><div class="kv">${k[1]}</div><div class="kl">${k[0]}</div></div>`).join('');
+const L=['High','Medium','Low'];
+mk('c1',{type:'doughnut',data:{labels:L,datasets:[{data:L.map(l=>D.filter(d=>lvl(d.p)==l).length),backgroundColor:L.map(l=>C[l])}]},options:{maintainAspectRatio:false,plugins:{legend:{position:'bottom'}}}});
+mk('c2',{type:'scatter',data:{datasets:L.map(l=>({label:l,data:D.filter(d=>lvl(d.p)==l).map(d=>({x:d.att,y:d.internal})),backgroundColor:C[l],pointRadius:3}))},options:{maintainAspectRatio:false,scales:{x:{title:{display:true,text:'Attendance %'}},y:{title:{display:true,text:'Internal marks %'}}},plugins:{legend:{position:'bottom'}}}});
+const a=(l,k)=>{const r=D.filter(d=>lvl(d.p)==l);return r.length?+(r.reduce((s,d)=>s+d[k],0)/r.length).toFixed(1):0};
+mk('c3',{type:'bar',data:{labels:['Attendance','Internal','Mid-sem','Assignment'],datasets:L.map(l=>({label:l,data:['att','internal','mid','assign'].map(k=>a(l,k)),backgroundColor:C[l]}))},options:{maintainAspectRatio:false,plugins:{legend:{position:'bottom'}}}})}
+// form
+$('form').innerHTML='<label>Name<input id="f_name" value=""></label><label>Student ID<input id="f_id"></label><label>Branch<select id="f_branch">'+BR.map(b=>`<option>${b}</option>`).join('')+'</select></label><label>Semester<select id="f_sem"><option>3</option><option>5</option><option>7</option></select></label>'+FT.map(f=>`<label>${f[1]}<input type="number" id="f_${f[0]}" min="${f[2]}" max="${f[3]}" step="${f[0]=='cgpa'?.1:1}" value="${f[4]}"></label>`).join('');
+const cap=(k,v)=>clamp(+v||0,FT[KEYS.indexOf(k)][2],FT[KEYS.indexOf(k)][3]);
+const cur_=()=>{const o={};KEYS.forEach(k=>o[k]=cap(k,$('f_'+k).value));return o};
+function pv(){const o=cur_(),p=pred(KEYS.map(k=>o[k])),l=lvl(p),c=COL()[l];
+$('pp').textContent=Math.round(p*100)+'% '+l+' risk';$('pp').style.color=c;$('pb').style.width=p*100+'%';$('pb').style.background=c;
+$('pl').textContent='Probability that this student is at risk, averaged over '+M.ts.length+' trees.';
+const w=weak(o);$('wk').innerHTML=w.length?w.map(x=>`<li>${FT[KEYS.indexOf(x.k)][1]}: ${o[x.k]}</li>`).join(''):'<li>No major weak areas</li>';
+$('rc').innerHTML=l=='Low'&&!w.length?'<li>Keep up the current routine.</li>':w.map(x=>`<li>${TIP[x.k]}</li>`).join('')+(l=='High'?'<li>Schedule a faculty mentor meeting this week.</li>':'')}
+$('form').oninput=pv;
+$('reset').onclick=()=>{FT.forEach(f=>$('f_'+f[0]).value=f[4]);['name','id'].forEach(k=>$('f_'+k).value='');$('msg').textContent='';pv()};
+$('save').onclick=()=>{const name=$('f_name').value.trim(),id=$('f_id').value.trim();if(!name||!id){$('msg').textContent='Enter name and ID.';return}
+if(D.some(d=>d.id==id)){$('msg').textContent='ID already exists.';return}
+const d={id,name,branch:$('f_branch').value,sem:+$('f_sem').value,...cur_(),y:0};d.p=pred(KEYS.map(k=>d[k]));d.y=d.p>=.5?1:0;D.push(d);
+try{const a=JSON.parse(localStorage.getItem('sms_added')||'[]');a.push(d);localStorage.setItem('sms_added',JSON.stringify(a))}catch(e){}
+$('msg').textContent='Saved '+name+' ('+lvl(d.p)+' risk)'};
+function mod(){$('mt').innerHTML=[['Accuracy',M.m.acc],['Precision',M.m.pr],['Recall',M.m.rc],['F1',M.m.f1]].map(k=>`<div class="card"><div class="kv" style="font-size:22px">${(k[1]*100).toFixed(1)}%</div><div class="kl">${k[0]}</div></div>`).join('');
+const m=M.m;$('cm').innerHTML=`<tr><th></th><th>Pred. safe</th><th>Pred. at risk</th></tr><tr><th>Actually safe</th><td>${m.tn}</td><td>${m.fp}</td></tr><tr><th>Actually at risk</th><td>${m.fn}</td><td>${m.tp}</td></tr>`;
+Chart.defaults.color=css('--tx');Chart.defaults.borderColor=css('--bd');
+const o=M.imp.map((v,i)=>[FT[i][1],v]).sort((a,b)=>b[1]-a[1]);
+mk('c4',{type:'bar',data:{labels:o.map(x=>x[0]),datasets:[{data:o.map(x=>+(x[1]*100).toFixed(1)),backgroundColor:css('--ac')}]},options:{indexAxis:'y',maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{title:{display:true,text:'Importance %'}}}}})}
+[['nt','tv'],['md','dv'],['ts','sv']].forEach(([a,b])=>$(a).oninput=()=>$(b).textContent=$(a).value);
+$('train').onclick=()=>{train();mod()};
+function tab(){const q=$('q').value.toLowerCase(),r=$('fr').value,C=COL();
+const f=D.filter(d=>(!q||(d.name+d.id).toLowerCase().includes(q))&&(!r||lvl(d.p)==r)).sort((a,b)=>b.p-a.p).slice(0,150);
+$('tb').innerHTML='<tr><th>ID</th><th>Name</th><th>Branch</th><th>Sem</th><th>Att %</th><th>Internal</th><th>Mid</th><th>CGPA</th><th>Risk</th><th>Top weak area</th></tr>'+f.map(d=>{const w=weak(d)[0],l=lvl(d.p);return`<tr><td>${d.id}</td><td>${d.name}</td><td>${d.branch}</td><td>${d.sem}</td><td>${d.att}</td><td>${d.internal}</td><td>${d.mid}</td><td>${d.cgpa}</td><td><span class="p" style="background:${C[l]}">${l} ${Math.round(d.p*100)}%</span></td><td>${w?FT[KEYS.indexOf(w.k)][1]:'-'}</td></tr>`}).join('')}
+$('q').oninput=tab;$('fr').onchange=tab;
+$('ex').onclick=()=>{const h=['id','name','branch','sem',...KEYS,'risk_probability','risk_level'];const csv=[h.join(',')].concat(D.map(d=>[d.id,d.name,d.branch,d.sem,...KEYS.map(k=>d[k]),d.p.toFixed(3),lvl(d.p)].join(','))).join('\n');
+const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download='students_risk.csv';a.click()};
+$('im').onchange=e=>{const fl=e.target.files[0];if(!fl)return;const rd=new FileReader();rd.onload=()=>{const L=rd.result.trim().split(/\r?\n/),h=L[0].split(',');let n=0;
+L.slice(1).forEach(l=>{const c=l.split(','),o={};h.forEach((k,i)=>o[k.trim()]=c[i]);if(!o.id||D.some(d=>d.id==o.id))return;const d={id:o.id,name:o.name||o.id,branch:o.branch||'Computer',sem:+o.sem||5};KEYS.forEach(k=>d[k]=cap(k,o[k]));d.p=pred(KEYS.map(k=>d[k]));d.y=d.p>=.5?1:0;D.push(d);n++});tab();alert(n+' students imported (columns: id,name,branch,sem,'+KEYS.join(',')+')')};rd.readAsText(fl)};
+train();pv();show();
+</script></body></html>
